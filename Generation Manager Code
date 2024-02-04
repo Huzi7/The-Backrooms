@@ -1,0 +1,207 @@
+Procedually, Generates the Backrooms! However, you need buttons!
+
+using System.Collections;
+using System.Collections.Generic;
+using UnityEngine;
+using UnityEngine.SceneManagement;
+using UnityEngine.UI;
+
+public enum GenerationState
+{
+    Idle,
+    GeneratingRooms,
+    GeneratingLights,
+
+    GeneratingSpawn,
+    GeneratingExit,
+
+    GeneratingBarrier
+}
+
+public class GenerationManager : MonoBehaviour
+{
+    [Header("References")]
+    [SerializeField] Transform WorldGrid;
+    [SerializeField] List<GameObject> RoomTypes;
+    [SerializeField] List<GameObject> LightTypes;
+    [SerializeField] Slider MapSizeSlider, EmptinessSlider, BrightnessSlider;
+    [SerializeField] Button GenerateButton;
+    [SerializeField] GameObject E_Room;
+    [SerializeField] GameObject B_room;
+    [SerializeField] GameObject SpawnRoom, ExitRoom;
+    public List<GameObject> GeneratedRooms;
+    [SerializeField] GameObject MainCameraObject;
+    [SerializeField] GameObject PlayerObject;
+    [SerializeField] GameObject EntityObject;
+
+    [Header("Settings")]
+    public int mapEmptiness;
+    public int mapBrightness;
+    public int mapSize = 16;
+    private int mapSizeSqr;
+    private Vector3 currentPos;
+    private float currentPosX, currentPosZ, currentPosTracker, currentRoom;
+    public float roomSize = 7;
+    public GenerationState currentState;
+
+    private void Update()
+    {
+        mapSize = (int)Mathf.Pow(MapSizeSlider.value, 4);
+        mapSizeSqr = (int)Mathf.Sqrt(mapSize);
+        mapEmptiness = (int)EmptinessSlider.value;
+        mapBrightness = (int)BrightnessSlider.value;
+
+        if(Input.GetKey(KeyCode.P)) {
+            ReloadWorld();
+            Cursor.visible = true;
+            Cursor.lockState = CursorLockMode.None;
+        }
+    }
+
+    public void ReloadWorld()
+    {
+        SceneManager.LoadScene(SceneManager.GetActiveScene().name);
+    }
+
+       public void GenerateWorld()
+    {
+        for (int i = 0; i < mapEmptiness; i++)
+        {
+            RoomTypes.Add(E_Room);
+        }
+
+        GenerateButton.interactable = false;
+
+        for (int state = 0; state < 6; state++)
+        {
+            for (int i = 0; i < mapSize; i++)
+            {
+                if (currentPosTracker == mapSizeSqr)
+                {
+                    if(currentState == GenerationState.GeneratingBarrier) GenerateBarrier(); //Right
+
+                    currentPosX = 0;
+                    currentPosTracker = 0;
+                    currentPosZ += roomSize;
+
+                    if(currentState == GenerationState.GeneratingBarrier) GenerateBarrier(); //Left
+                }
+
+                currentPos = new Vector3(currentPosX, 0, currentPosZ);
+
+                switch (currentState) {
+                case GenerationState.GeneratingRooms:
+                   GeneratedRooms.Add( Instantiate(RoomTypes[Random.Range(0, RoomTypes.Count)], currentPos, Quaternion.identity, WorldGrid));
+                break;
+
+                case GenerationState.GeneratingLights:
+                    int lightSpawn = Random.Range(-1, mapBrightness);
+
+                    if(lightSpawn == 0)
+                        Instantiate(LightTypes[Random.Range(0, LightTypes.Count)], currentPos, Quaternion.identity, WorldGrid);
+                    break;
+                case GenerationState.GeneratingBarrier:
+
+                    if(currentRoom <= mapSizeSqr && currentRoom >= 0) {
+                        GenerateBarrier(); //Bottom
+                        Debug.Log("TOP");
+                    }
+
+                    if(currentRoom <= mapSize && currentRoom >= mapSize - mapSizeSqr) {
+                        GenerateBarrier(); //Top
+                        Debug.Log("Bottom");
+                    }
+
+                    break;
+                }
+                currentRoom++;
+                currentPosTracker++;
+                currentPosX += roomSize;
+            }
+            NextState();
+
+            switch(currentState) {
+                case GenerationState.GeneratingExit:
+                int roomToReplace = Random.Range(0, GeneratedRooms.Count);
+
+                GameObject exitRoom = Instantiate(ExitRoom, GeneratedRooms[roomToReplace].transform.position, Quaternion.identity, WorldGrid);
+
+                Destroy(GeneratedRooms[roomToReplace]);
+
+                GeneratedRooms[roomToReplace] = exitRoom;
+
+                    break;
+                    //----------------------------------------------
+                case GenerationState.GeneratingSpawn:
+                int _roomToReplace = Random.Range(0, GeneratedRooms.Count);
+
+                spawnRoom = Instantiate(SpawnRoom, GeneratedRooms[_roomToReplace].transform.position, Quaternion.identity, WorldGrid);
+
+                Destroy(GeneratedRooms[_roomToReplace]);
+
+                GeneratedRooms[_roomToReplace] = spawnRoom;
+
+                    break;
+            }
+            
+        }
+    }
+    public GameObject spawnRoom;
+    public void SpawnPlayer() {
+        PlayerObject.SetActive(true);
+        EntityObject.SetActive(true);
+        PlayerObject.transform.position = new Vector3(spawnRoom.transform.position.x, 1.8f, spawnRoom.transform.position.z);
+        EntityObject.transform.position = new Vector3(ExitRoom.transform.position.x, 1.8f, ExitRoom.transform.position.z);
+
+        PlayerObject.SetActive(true);
+        MainCameraObject.SetActive(false);
+
+        Cursor.visible = true;
+        Cursor.lockState = CursorLockMode.None;
+    }
+            public void NextState() {
+                currentState++;
+
+                currentRoom = 0;
+
+                currentPosX = 0;
+                currentPosZ = 0;
+                currentPosTracker = 0;
+                currentPos = Vector3.zero;
+            }
+
+            public void WinGame() {
+                MainCameraObject.SetActive(true);
+                PlayerObject.SetActive(false);
+
+                Cursor.visible = true;
+                Cursor.lockState = CursorLockMode.None;
+
+                Debug.Log("You Won!");
+            }
+
+            public void GenerateBarrier() {
+                currentPos = new(currentPosX, 0, currentPosZ);
+
+                Instantiate(B_room, currentPos, Quaternion.identity, WorldGrid);
+            }
+
+            // Add this method to your GenerationManager script
+public void GenerateRoomsAroundPlayer(Vector3 playerPosition)
+{
+    int playerRoomX = Mathf.FloorToInt(playerPosition.x / roomSize);
+    int playerRoomZ = Mathf.FloorToInt(playerPosition.z / roomSize);
+
+    // Call your room generation logic based on the player's current room
+    // You might want to add some logic to determine which rooms to generate, load, or unload
+    // Example: Generate only the rooms in a certain radius around the player
+
+    // Example:
+    // GenerateRoom(playerRoomX, playerRoomZ);
+    // GenerateRoom(playerRoomX + 1, playerRoomZ);
+    // GenerateRoom(playerRoomX - 1, playerRoomZ);
+    // GenerateRoom(playerRoomX, playerRoomZ + 1);
+    // GenerateRoom(playerRoomX, playerRoomZ - 1);
+}
+
+        }
